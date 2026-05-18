@@ -1,0 +1,35 @@
+import { create } from 'zustand';
+import axios from 'axios';
+
+export const useAdminStore = create((set, get) => ({
+  admin: JSON.parse(localStorage.getItem('adminUser')) || null,
+  token: localStorage.getItem('adminToken') || null,
+  theme: localStorage.getItem('theme') || 'dark',
+  setAuth: (admin, token) => {
+    localStorage.setItem('adminUser', JSON.stringify(admin));
+    localStorage.setItem('adminToken', token);
+    set({ admin, token });
+  },
+  toggleTheme: () => {
+    set((state) => {
+      const newTheme = state.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('theme', newTheme);
+      document.documentElement.classList.toggle('dark', newTheme === 'dark');
+      return { theme: newTheme };
+    });
+  },
+  logout: async () => {
+    const { token } = get();
+    try {
+      await axios.post('http://localhost:5000/api/auth/logout', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (err) {
+      console.error('Logout sync failed');
+    } finally {
+      localStorage.removeItem('adminUser');
+      localStorage.removeItem('adminToken');
+      set({ admin: null, token: null });
+    }
+  }
+}));

@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #FFD700;
+  --accent: #FBC02D;
+}
+
+.dark {
+  --bg-main: #080808;
+  --bg-card: rgba(15, 15, 15, 0.7);
+  --text-primary: #FFFFFF;
+  --text-secondary: #9CA3AF;
+  --border: rgba(255, 215, 0, 0.15);
+  --input-bg: rgba(0, 0, 0, 0.3);
+}
+
+:root:not(.dark) {
+  --bg-main: #FDFDFB;
+  --bg-card: #FFFFFF;
+  --text-primary: #111111;
+  --text-secondary: #6B7280;
+  --border: rgba(0, 0, 0, 0.08);
+  --input-bg: #F3F4F6;
+}
+
+body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+.magnificent-bg {
+  background: radial-gradient(circle at 50% -20%, rgba(255, 215, 0, 0.05), var(--bg-main) 80%);
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+}
+
+.dark .magnificent-bg {
+  background: radial-gradient(circle at 50% -20%, #221a00, #080808 80%);
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);
+}
+
+.dark .glass-card {
+  box-shadow: 0 20px 50px -12px rgba(0,0,0,0.5);
+}
+
+.gold-gradient {
+  background: linear-gradient(135deg, #FFD700 0%, #FBC02D 100%);
+}
+
+.input-field {
+  background: var(--input-bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  transition: all 0.3s ease;
+}
+
+.input-field:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.1);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--primary);
+  border-radius: 10px;
+}
+
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+input[type=number] {
+  -moz-appearance: textfield !important;
+}
