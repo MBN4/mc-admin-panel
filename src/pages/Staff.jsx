@@ -82,7 +82,9 @@ const Staff = () => {
     }
   };
 
-  if (admin?.email !== 'master@madina.com') {
+  const isMaster = admin?.role === 'admin' || admin?.role === 'superadmin';
+
+  if (!isMaster) {
     return (
         <div className="h-full flex flex-col items-center justify-center space-y-4">
             <div className="p-6 bg-red-500/10 rounded-full text-red-500"><ShieldAlert size={48} /></div>

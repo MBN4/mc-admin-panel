@@ -2,13 +2,12 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { 
-  TrendingUp, 
-  ShoppingBag, 
-  Users, 
-  Clock, 
-  Zap, 
-  AlertTriangle,
+import {
+  TrendingUp,
+  ShoppingBag,
+  Users,
+  Clock,
+  Zap,
   PackageCheck,
   BarChart3,
   PieChart as PieChartIcon
@@ -47,13 +46,10 @@ const StatCard = ({ title, value, icon: Icon, color }) => (
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { token, admin, theme } = useAdminStore();
+  const { token, theme } = useAdminStore();
   const [stats, setStats] = useState({ totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalRevenue: 0 });
   const [analytics, setAnalytics] = useState({ revenueData: [], qualityData: [], statusData: [] });
   const [isSyncing, setIsSyncing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const isSuperAdmin = admin?.email === 'master@madina.com';
 
   const fetchData = async () => {
     setIsSyncing(true);
@@ -76,29 +72,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleNukeSystem = async () => {
-    const email = prompt("CRITICAL ACTION: Enter Master Email to proceed:");
-    if (!email) return;
-    const pass = prompt("Enter Master Password:");
-    if (!pass) return;
-
-    if (window.confirm("ARE YOU ABSOLUTELY SURE? This will permanently delete all Fabrics, Styles, Attributes, and Orders. This action cannot be undone.")) {
-      setIsLoading(true);
-      try {
-        await axios.delete('http://localhost:5000/api/admin/system/nuke', {
-          data: { masterEmail: email, masterPass: pass },
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        alert("System wipe complete. Application data has been reset.");
-        fetchData();
-      } catch (err) {
-        alert(err.response?.data?.msg || "Authorization failed. System secured.");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-  };
-
   useEffect(() => { fetchData(); }, [token]);
 
   const PIE_COLORS = ['#FFD700', '#FBC02D', '#FFA000', '#FF8F00'];
@@ -106,7 +79,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-12">
-      {(isLoading || isSyncing) && <MagnificentLoader />}
+      {isSyncing && <MagnificentLoader />}
       <header className="flex justify-between items-end">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -115,14 +88,6 @@ const Dashboard = () => {
           </div>
           <motion.h1 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="text-5xl lg:text-6xl font-black tracking-tighter text-[var(--text-primary)] uppercase">Dashboard</motion.h1>
         </div>
-        {isSuperAdmin && (
-          <button 
-            onClick={handleNukeSystem}
-            className="p-4 bg-red-500/10 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all border border-red-500/20 shadow-lg shadow-red-500/10"
-          >
-            <AlertTriangle size={24} />
-          </button>
-        )}
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
