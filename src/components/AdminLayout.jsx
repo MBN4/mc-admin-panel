@@ -27,7 +27,7 @@ const AdminLayout = () => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
 
-  const isMaster = admin?.email === 'master@madina.com';
+  const isMaster = admin?.role === 'admin' || admin?.role === 'superadmin';
 
   const menuItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
