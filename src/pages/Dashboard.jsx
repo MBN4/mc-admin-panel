@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
+  TrendingDown,
   ShoppingBag,
   Users,
   Clock,
@@ -44,15 +45,51 @@ const StatCard = ({ title, value, icon: Icon, color }) => (
   </motion.div>
 );
 
+const POLL_INTERVAL_MS = 10000;
+
+const RevenueTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.15, ease: 'easeOut' }}
+      className="glass-card px-5 py-3 rounded-2xl border border-[#FFD700]/30 shadow-2xl"
+    >
+      <p className="text-[9px] font-black uppercase tracking-widest text-[var(--text-secondary)] mb-1">
+        {new Date(label).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+      </p>
+      <p className="text-lg font-black text-[#FFD700]">Rs. {Number(payload[0].value).toLocaleString()}</p>
+    </motion.div>
+  );
+};
+
+const LiveRevenueDot = (props) => {
+  const { cx, cy, index, dataLength } = props;
+  if (cx == null || cy == null || index !== dataLength - 1) return null;
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={9} fill="#FFD700" opacity={0.25}>
+        <animate attributeName="r" values="6;12;6" dur="1.8s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.35;0;0.35" dur="1.8s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={cx} cy={cy} r={5} fill="#FFD700" stroke="#000" strokeWidth={2} />
+    </g>
+  );
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { token, theme } = useAdminStore();
   const [stats, setStats] = useState({ totalOrders: 0, totalUsers: 0, pendingOrders: 0, totalRevenue: 0 });
   const [analytics, setAnalytics] = useState({ revenueData: [], qualityData: [], statusData: [] });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  const fetchData = async () => {
-    setIsSyncing(true);
+  const fetchData = async ({ silent = false } = {}) => {
+    if (!silent) setIsSyncing(true);
     try {
       const [statsRes, analyticsRes] = await Promise.all([
         axios.get('http://localhost:5000/api/admin/dashboard-stats', { headers: { Authorization: `Bearer ${token}` } }),
@@ -65,26 +102,55 @@ const Dashboard = () => {
         statusData: (analyticsRes.data.statusData || []).map(s => ({ ...s, count: Number(s.count) }))
       };
       setAnalytics(parsedAnalytics);
+      setLastUpdated(Date.now());
     } catch (err) {
       console.error('Failed to fetch data');
     } finally {
       setIsSyncing(false);
+      setIsInitialLoading(false);
     }
   };
 
-  useEffect(() => { fetchData(); }, [token]);
+  useEffect(() => {
+    fetchData();
+    const poll = setInterval(() => fetchData({ silent: true }), POLL_INTERVAL_MS);
+    return () => clearInterval(poll);
+  }, [token]);
+
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(tick);
+  }, []);
 
   const PIE_COLORS = ['#FFD700', '#FBC02D', '#FFA000', '#FF8F00'];
   const chartText = theme === 'dark' ? '#6B7280' : '#4B5563';
 
+  const revenueSeries = analytics.revenueData;
+  const totalPeriodRevenue = revenueSeries.reduce((sum, r) => sum + r.revenue, 0);
+  const lastDayRevenue = revenueSeries[revenueSeries.length - 1]?.revenue || 0;
+  const prevDayRevenue = revenueSeries[revenueSeries.length - 2]?.revenue || 0;
+  const dayDeltaPct = prevDayRevenue === 0
+    ? (lastDayRevenue > 0 ? 100 : 0)
+    : ((lastDayRevenue - prevDayRevenue) / prevDayRevenue) * 100;
+  const isTrendingUp = dayDeltaPct >= 0;
+
+  const secondsSinceUpdate = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
+  const liveLabel = secondsSinceUpdate === null ? 'Connecting…' : secondsSinceUpdate < 3 ? 'Just now' : `${secondsSinceUpdate}s ago`;
+
   return (
     <div className="space-y-12">
-      {isSyncing && <MagnificentLoader />}
+      {isInitialLoading && <MagnificentLoader />}
       <header className="flex justify-between items-end">
         <div>
           <div className="flex items-center gap-3 mb-2">
             <motion.p initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-[#FFD700] font-black text-xs uppercase tracking-[0.4em]">Intelligence Overview</motion.p>
-            {isSyncing && <div className="flex items-center gap-1 text-green-500 text-[8px] font-black uppercase tracking-widest animate-pulse"><Zap size={8} /> Live Sync</div>}
+            <div className="flex items-center gap-1.5 text-green-500 text-[8px] font-black uppercase tracking-widest">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className={`absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75 ${isSyncing ? 'animate-ping' : ''}`} />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500" />
+              </span>
+              Live <Zap size={8} className={isSyncing ? 'animate-pulse' : ''} /> {liveLabel}
+            </div>
           </div>
           <motion.h1 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }} className="text-5xl lg:text-6xl font-black tracking-tighter text-[var(--text-primary)] uppercase">Dashboard</motion.h1>
         </div>
@@ -98,29 +164,66 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        <div className="xl:col-span-2 glass-card rounded-[3rem] p-10 min-h-[450px]">
-          <div className="flex justify-between items-center mb-10">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          whileHover={{ scale: 1.004 }}
+          transition={{ duration: 0.4 }}
+          className="xl:col-span-2 glass-card rounded-[3rem] p-10 min-h-[450px]"
+        >
+          <div className="flex flex-wrap justify-between items-center gap-4 mb-10">
             <h2 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-3 text-[var(--text-primary)]"><BarChart3 className="text-[#FFD700]" /> Revenue Trend</h2>
-            <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Last 7 Days</p>
+            <div className="flex items-center gap-4">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={Math.round(totalPeriodRevenue)}
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 6 }}
+                  transition={{ duration: 0.25 }}
+                  className="text-right"
+                >
+                  <p className="text-sm font-black text-[var(--text-primary)]">Rs. {totalPeriodRevenue.toLocaleString()}</p>
+                  <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">This Week</p>
+                </motion.div>
+              </AnimatePresence>
+              <div className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black ${isTrendingUp ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+                {isTrendingUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                {Math.abs(dayDeltaPct).toFixed(0)}%
+              </div>
+              <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Last 7 Days</p>
+            </div>
           </div>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={analytics.revenueData}>
+              <AreaChart data={analytics.revenueData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#FFD700" stopOpacity={0.4}/>
+                    <stop offset="5%" stopColor="#FFD700" stopOpacity={0.45}/>
                     <stop offset="95%" stopColor="#FFD700" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
                 <XAxis dataKey="date" stroke={chartText} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(str) => new Date(str).toLocaleDateString('en-US', {weekday: 'short'})} />
                 <YAxis stroke={chartText} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `Rs.${val}`} />
-                <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '15px' }} />
-                <Area type="monotone" dataKey="revenue" stroke="#FFD700" strokeWidth={4} fillOpacity={1} fill="url(#colorRev)" />
+                <Tooltip content={<RevenueTooltip />} cursor={{ stroke: '#FFD700', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#FFD700"
+                  strokeWidth={4}
+                  fillOpacity={1}
+                  fill="url(#colorRev)"
+                  isAnimationActive
+                  animationDuration={900}
+                  animationEasing="ease-out"
+                  dot={(props) => <LiveRevenueDot {...props} dataLength={analytics.revenueData.length} />}
+                  activeDot={{ r: 6, fill: '#FFD700', stroke: '#000', strokeWidth: 2 }}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </motion.div>
 
         <div className="glass-card rounded-[3rem] p-10 min-h-[450px]">
           <h2 className="text-2xl font-black tracking-tighter uppercase mb-10 flex items-center gap-3 text-[var(--text-primary)]"><PieChartIcon className="text-[#FFD700]" /> Order Status</h2>
