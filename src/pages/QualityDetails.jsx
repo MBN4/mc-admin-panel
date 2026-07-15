@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  ArrowLeft, Plus, Trash2, Check, X, Layers, Palette, 
-  Maximize2, Ruler, Save, Type, Hash, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, Sparkles, Edit2
+  ArrowLeft, Plus, Trash2, Check, X, Layers, Palette,
+  Maximize2, Ruler, Save, Type, Hash, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, Edit2
 } from 'lucide-react';
 import { useAdminStore } from '../store/useAdminStore';
 import MagnificentLoader from '../components/MagnificentLoader';
@@ -83,7 +83,8 @@ const QualityDetails = () => {
       const initialPrices = {};
       currentStyle.PriceMatrices.forEach(p => {
         const key = `${p.categoryId}-${p.colorId}-${p.widthId || 'none'}-${p.sizeId}`;
-        initialPrices[key] = p.price;
+        // Clamp to >= 0 — never surface negative prices even if bad data exists in the DB.
+        initialPrices[key] = Math.max(0, Number(p.price) || 0);
       });
       setMatrixPrices(initialPrices);
     }
@@ -132,18 +133,11 @@ const QualityDetails = () => {
     if (!combo.categoryId || !combo.colorId || (widths.length > 0 && !combo.widthId)) { notify('error', 'Select all combinations'); return; }
     setIsLoading(true);
     try {
-        const pricesPayload = sizes.map(s => ({ sizeId: s.id, price: parseInt(matrixPrices[`${combo.categoryId}-${combo.colorId}-${combo.widthId || 'none'}-${s.id}`]) || 0 }));
+        const pricesPayload = sizes.map(s => ({ sizeId: s.id, price: Math.max(0, parseInt(matrixPrices[`${combo.categoryId}-${combo.colorId}-${combo.widthId || 'none'}-${s.id}`]) || 0) }));
         await axios.post('http://localhost:5000/api/admin/pricing/update', { styleId: activeStyleId, ...combo, prices: pricesPayload }, { headers: { Authorization: `Bearer ${token}` } });
         fetchData();
         notify('success', 'Pricing synced successfully');
     } catch (err) { notify('error', 'Sync failed'); } finally { setIsLoading(false); }
-  };
-
-  const seedDummy = async () => {
-    if (!window.confirm("Auto-generate all missing prices?")) return;
-    setIsLoading(true);
-    try { await axios.post('http://localhost:5000/api/admin/pricing/seed-dummy', { qualityId: id }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); notify('success', 'Seeded successfully'); } 
-    catch (err) { notify('error', 'Seeding failed'); } finally { setIsLoading(false); }
   };
 
   const deleteItem = async (type, itemId) => {
@@ -174,7 +168,6 @@ const QualityDetails = () => {
             <div><p className="text-[#FFD700] font-black text-xs uppercase tracking-widest">{quality?.name}</p><h1 className="text-4xl font-black text-[var(--text-primary)] uppercase">Inventory & Prices</h1></div>
         </div>
         <div className="flex items-center gap-3">
-            {isMaster && <button onClick={seedDummy} className="bg-purple-500/10 border border-purple-500/20 px-6 py-3 rounded-xl text-purple-400 font-black uppercase text-[9px] tracking-widest flex items-center gap-2 hover:bg-purple-500 hover:text-white transition-all"><Sparkles size={14}/> Auto-Price</button>}
             <div className="flex gap-2 p-1 bg-white/5 border border-[var(--border)] rounded-2xl shadow-inner">
                 <button onClick={() => setMode('structure')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${mode === 'structure' ? 'bg-[#FFD700] text-black shadow-lg' : 'text-[var(--text-secondary)]'}`}>Structure</button>
                 <button onClick={() => setMode('pricing')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${mode === 'pricing' ? 'bg-[#FFD700] text-black shadow-lg' : 'text-[var(--text-secondary)]'}`}>Pricing</button>
@@ -223,7 +216,18 @@ const QualityDetails = () => {
                     <div className="flex flex-wrap gap-2">{categories.map(c => (<button key={c.id} onClick={() => toggleCombo('categoryId', c.id)} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${combo.categoryId === c.id ? 'bg-[#FFD700] text-black border-[#FFD700]' : 'bg-black/20 text-gray-500 border-white/5 hover:border-[#FFD700]/30'}`}>{c.value}</button>))}</div>
                 </div>
                 <div className="space-y-4"><p className="text-[10px] font-black text-[#FFD700] uppercase ml-2 tracking-widest">2. Color</p>
-                    <div className="flex flex-wrap gap-3">{colors.map(c => (<button key={c.id} onClick={() => toggleCombo('colorId', c.id)} className={`w-11 h-11 rounded-2xl border-2 transition-all flex items-center justify-center shadow-inner ${combo.colorId === c.id ? 'border-[#FFD700] scale-110 shadow-lg' : 'border-black/10 opacity-60'}`} style={{ backgroundColor: c.hex_code }} >{combo.colorId === c.id && <Check size={18} color={c.value.toLowerCase() === 'black' ? 'white' : 'black'} strokeWidth={4} />}</button>))}</div>
+                    <div className="flex flex-wrap gap-4">{colors.map(c => {
+                      const isActive = combo.colorId === c.id;
+                      const isDark = (c.hex_code || '').toLowerCase() === '#000000' || c.value.toLowerCase() === 'black';
+                      return (
+                        <button key={c.id} onClick={() => toggleCombo('colorId', c.id)} className="flex flex-col items-center gap-1.5 group" title={c.value}>
+                          <span className={`w-11 h-11 rounded-2xl border-2 transition-all flex items-center justify-center shadow-inner ${isActive ? 'border-[#FFD700] scale-110 shadow-lg' : 'border-black/10 opacity-70 group-hover:opacity-100'}`} style={{ backgroundColor: c.hex_code || '#FFFFFF' }}>
+                            {isActive && <Check size={18} color={isDark ? 'white' : 'black'} strokeWidth={4} />}
+                          </span>
+                          <span className={`text-[9px] font-black uppercase tracking-wide max-w-[56px] truncate ${isActive ? 'text-[#FFD700]' : 'text-[var(--text-secondary)]'}`}>{c.value}</span>
+                        </button>
+                      );
+                    })}</div>
                 </div>
                 {widths.length > 0 && (<div className="space-y-4"><p className="text-[10px] font-black text-[#FFD700] uppercase ml-2 tracking-widest">3. Width</p>
                     <div className="flex flex-wrap gap-2">{widths.map(w => (<button key={w.id} onClick={() => toggleCombo('widthId', w.id)} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${combo.widthId === w.id ? 'bg-[#FFD700] text-black border-[#FFD700]' : 'bg-black/20 text-gray-500 border-white/5 hover:border-[#FFD700]/30'}`}>{w.value}</button>))}</div>
@@ -239,7 +243,7 @@ const QualityDetails = () => {
                                 <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase mb-4 tracking-widest text-center opacity-60">Size {s.value}</p>
                                 <div className="flex items-center bg-black/40 border border-white/10 rounded-2xl overflow-hidden focus-within:border-[#FFD700] transition-all relative">
                                     <div className="px-4 text-[#FFD700] font-black text-[10px] border-r border-white/5 py-4 bg-white/2">Rs</div>
-                                    <input type="number" className="flex-1 bg-transparent px-4 py-4 outline-none text-white font-black text-lg min-w-0" value={matrixPrices[key] ?? ''} onChange={(e) => handlePriceUpdate(key, e.target.value)} />
+                                    <input type="number" min={0} inputMode="numeric" onKeyDown={(e) => { if (['-', '+', 'e', 'E'].includes(e.key)) e.preventDefault(); }} className="flex-1 bg-transparent px-4 py-4 outline-none text-white font-black text-lg min-w-0" value={matrixPrices[key] ?? ''} onChange={(e) => handlePriceUpdate(key, e.target.value)} />
                                     <div className="flex flex-col bg-white/2 border-l border-white/5">
                                         <button onClick={() => handlePriceAdjustment(s.id, 5)} className="px-3 py-2 border-b border-white/5 hover:bg-[#FFD700] hover:text-black transition-all text-[#FFD700]/50"><ChevronUp size={14}/></button>
                                         <button onClick={() => handlePriceAdjustment(s.id, -5)} className="px-3 py-2 hover:bg-red-500 hover:text-white transition-all text-red-500/50"><ChevronDown size={14}/></button>

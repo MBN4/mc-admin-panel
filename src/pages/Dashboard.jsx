@@ -54,12 +54,12 @@ const RevenueTooltip = ({ active, payload, label }) => {
       initial={{ opacity: 0, y: 8, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.15, ease: 'easeOut' }}
-      className="glass-card px-5 py-3 rounded-2xl border border-[#FFD700]/30 shadow-2xl"
+      className="glass-card px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl border border-[#FFD700]/30 shadow-2xl whitespace-nowrap"
     >
-      <p className="text-[9px] font-black uppercase tracking-widest text-[var(--text-secondary)] mb-1">
-        {new Date(label).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+      <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-[var(--text-secondary)] mb-1">
+        {new Date(label).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
       </p>
-      <p className="text-lg font-black text-[#FFD700]">Rs. {Number(payload[0].value).toLocaleString()}</p>
+      <p className="text-base sm:text-lg font-black text-[#FFD700]">Rs. {Number(payload[0].value).toLocaleString()}</p>
     </motion.div>
   );
 };
@@ -78,6 +78,27 @@ const LiveRevenueDot = (props) => {
   );
 };
 
+const HoverRevenueDot = (props) => {
+  const { cx, cy } = props;
+  if (cx == null || cy == null) return null;
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={11} fill="#FFD700" opacity={0.18} />
+      <circle cx={cx} cy={cy} r={6} fill="#FFD700" stroke="#000" strokeWidth={2.5} />
+    </g>
+  );
+};
+
+const useIsMobile = (breakpoint = 640) => {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < breakpoint);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [breakpoint]);
+  return isMobile;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { token, theme } = useAdminStore();
@@ -87,6 +108,14 @@ const Dashboard = () => {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [now, setNow] = useState(() => Date.now());
+  const [activeIndex, setActiveIndex] = useState(null);
+  const [statusActive, setStatusActive] = useState(null);
+  // Charts animate on the first render only. The 10s background poll replaces the
+  // data arrays, and if animation stayed on, every poll re-ran the full draw-in —
+  // that's the "glitchy" flicker. After the first paint we freeze animation so
+  // subsequent poll updates morph in place smoothly.
+  const [chartsAnimated, setChartsAnimated] = useState(false);
+  const isMobile = useIsMobile();
 
   const fetchData = async ({ silent = false } = {}) => {
     if (!silent) setIsSyncing(true);
@@ -122,6 +151,13 @@ const Dashboard = () => {
     return () => clearInterval(tick);
   }, []);
 
+  useEffect(() => {
+    if (!isInitialLoading && !chartsAnimated) {
+      const t = setTimeout(() => setChartsAnimated(true), 1300);
+      return () => clearTimeout(t);
+    }
+  }, [isInitialLoading, chartsAnimated]);
+
   const PIE_COLORS = ['#FFD700', '#FBC02D', '#FFA000', '#FF8F00'];
   const chartText = theme === 'dark' ? '#6B7280' : '#4B5563';
 
@@ -136,6 +172,21 @@ const Dashboard = () => {
 
   const secondsSinceUpdate = lastUpdated ? Math.max(0, Math.round((now - lastUpdated) / 1000)) : null;
   const liveLabel = secondsSinceUpdate === null ? 'Connecting…' : secondsSinceUpdate < 3 ? 'Just now' : `${secondsSinceUpdate}s ago`;
+
+  const hoveredPoint = activeIndex != null ? revenueSeries[activeIndex] : null;
+  const headerLabel = hoveredPoint
+    ? new Date(hoveredPoint.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    : 'This Month';
+  const headerValue = hoveredPoint ? hoveredPoint.revenue : totalPeriodRevenue;
+
+  const handleChartMove = (state) => {
+    if (state?.isTooltipActive && state.activeTooltipIndex != null) {
+      setActiveIndex(state.activeTooltipIndex);
+    } else {
+      setActiveIndex(null);
+    }
+  };
+  const handleChartLeave = () => setActiveIndex(null);
 
   return (
     <div className="space-y-12">
@@ -169,34 +220,44 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           whileHover={{ scale: 1.004 }}
           transition={{ duration: 0.4 }}
-          className="xl:col-span-2 glass-card rounded-[3rem] p-10 min-h-[450px]"
+          className="xl:col-span-2 glass-card rounded-[3rem] p-6 sm:p-10 min-h-[450px] relative overflow-hidden"
         >
-          <div className="flex flex-wrap justify-between items-center gap-4 mb-10">
-            <h2 className="text-2xl font-black tracking-tighter uppercase flex items-center gap-3 text-[var(--text-primary)]"><BarChart3 className="text-[#FFD700]" /> Revenue Trend</h2>
-            <div className="flex items-center gap-4">
+          <motion.div
+            className="absolute -top-16 -left-16 w-56 h-56 bg-[#FFD700]/10 rounded-full blur-3xl pointer-events-none"
+            animate={{ opacity: [0.3, 0.6, 0.3], scale: [1, 1.15, 1] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          />
+          <div className="flex flex-wrap justify-between items-center gap-4 mb-8 sm:mb-10 relative z-10">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tighter uppercase flex items-center gap-3 text-[var(--text-primary)]"><BarChart3 className="text-[#FFD700]" /> Revenue Trend</h2>
+            <div className="flex items-center gap-3 sm:gap-4">
               <AnimatePresence mode="wait">
                 <motion.div
-                  key={Math.round(totalPeriodRevenue)}
+                  key={hoveredPoint ? hoveredPoint.date : 'total'}
                   initial={{ opacity: 0, y: -6 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 6 }}
-                  transition={{ duration: 0.25 }}
+                  transition={{ duration: 0.2 }}
                   className="text-right"
                 >
-                  <p className="text-sm font-black text-[var(--text-primary)]">Rs. {totalPeriodRevenue.toLocaleString()}</p>
-                  <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">This Week</p>
+                  <p className="text-sm font-black text-[#FFD700]">Rs. {headerValue.toLocaleString()}</p>
+                  <p className="text-[9px] font-black text-[var(--text-secondary)] uppercase tracking-widest">{headerLabel}</p>
                 </motion.div>
               </AnimatePresence>
-              <div className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black ${isTrendingUp ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
+              <div className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-[10px] font-black transition-colors ${isTrendingUp ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
                 {isTrendingUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                 {Math.abs(dayDeltaPct).toFixed(0)}%
               </div>
-              <p className="text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Last 7 Days</p>
+              <p className="hidden sm:block text-[10px] font-black text-[var(--text-secondary)] uppercase tracking-widest">Last 30 Days • Delivered</p>
             </div>
           </div>
-          <div className="h-[300px] w-full">
+          <div className="h-[220px] sm:h-[280px] lg:h-[320px] w-full relative z-10">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={analytics.revenueData} margin={{ top: 20, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart
+                data={analytics.revenueData}
+                margin={{ top: 20, right: isMobile ? 0 : 10, left: 0, bottom: 0 }}
+                onMouseMove={handleChartMove}
+                onMouseLeave={handleChartLeave}
+              >
                 <defs>
                   <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#FFD700" stopOpacity={0.45}/>
@@ -204,9 +265,9 @@ const Dashboard = () => {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
-                <XAxis dataKey="date" stroke={chartText} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(str) => new Date(str).toLocaleDateString('en-US', {weekday: 'short'})} />
-                <YAxis stroke={chartText} fontSize={10} tickLine={false} axisLine={false} tickFormatter={(val) => `Rs.${val}`} />
-                <Tooltip content={<RevenueTooltip />} cursor={{ stroke: '#FFD700', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                <XAxis dataKey="date" stroke={chartText} fontSize={isMobile ? 9 : 10} tickLine={false} axisLine={false} interval={isMobile ? 6 : 3} tickFormatter={(str) => new Date(str).toLocaleDateString('en-US', {month: 'short', day: 'numeric'})} />
+                <YAxis stroke={chartText} fontSize={isMobile ? 9 : 10} width={isMobile ? 34 : 45} tickLine={false} axisLine={false} tickFormatter={(val) => `Rs.${val}`} />
+                <Tooltip content={<RevenueTooltip />} cursor={{ stroke: '#FFD700', strokeWidth: 1, strokeDasharray: '4 4' }} animationDuration={150} allowEscapeViewBox={{ x: false, y: false }} />
                 <Area
                   type="monotone"
                   dataKey="revenue"
@@ -214,11 +275,11 @@ const Dashboard = () => {
                   strokeWidth={4}
                   fillOpacity={1}
                   fill="url(#colorRev)"
-                  isAnimationActive
+                  isAnimationActive={!chartsAnimated}
                   animationDuration={900}
                   animationEasing="ease-out"
                   dot={(props) => <LiveRevenueDot {...props} dataLength={analytics.revenueData.length} />}
-                  activeDot={{ r: 6, fill: '#FFD700', stroke: '#000', strokeWidth: 2 }}
+                  activeDot={<HoverRevenueDot />}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -230,22 +291,60 @@ const Dashboard = () => {
           <div className="h-[250px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={analytics.statusData} innerRadius={70} outerRadius={90} paddingAngle={5} dataKey="count" nameKey="status">
+                <Pie
+                  data={analytics.statusData}
+                  innerRadius={70}
+                  outerRadius={90}
+                  paddingAngle={analytics.statusData.length > 1 ? 4 : 0}
+                  cornerRadius={6}
+                  dataKey="count"
+                  nameKey="status"
+                  isAnimationActive={!chartsAnimated}
+                  animationDuration={800}
+                  animationEasing="ease-out"
+                  onMouseEnter={(_, index) => setStatusActive(index)}
+                  onMouseLeave={() => setStatusActive(null)}
+                >
                   {analytics.statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} stroke="none" />
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={PIE_COLORS[index % PIE_COLORS.length]}
+                      stroke="none"
+                      opacity={statusActive === null || statusActive === index ? 1 : 0.3}
+                      style={{ transition: 'opacity 0.25s ease, transform 0.25s ease', transformOrigin: 'center', transform: statusActive === index ? 'scale(1.04)' : 'scale(1)', cursor: 'pointer' }}
+                    />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '15px' }} />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-black text-[var(--text-primary)]">{stats.totalOrders}</span>
-              <span className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Orders</span>
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={statusActive === null ? 'total' : `s-${statusActive}`}
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.18 }}
+                  className="flex flex-col items-center"
+                >
+                  <span className="text-3xl font-black text-[var(--text-primary)]">
+                    {statusActive === null ? stats.totalOrders : analytics.statusData[statusActive]?.count}
+                  </span>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-[var(--text-secondary)] mt-1">
+                    {statusActive === null ? 'Total Orders' : analytics.statusData[statusActive]?.status}
+                  </span>
+                </motion.div>
+              </AnimatePresence>
             </div>
           </div>
           <div className="mt-8 space-y-3">
              {analytics.statusData.map((s, i) => (
-               <div key={i} className="flex justify-between items-center px-5 py-3 bg-[var(--input-bg)] rounded-2xl border border-[var(--border)]">
+               <div
+                 key={i}
+                 onMouseEnter={() => setStatusActive(i)}
+                 onMouseLeave={() => setStatusActive(null)}
+                 className={`flex justify-between items-center px-5 py-3 rounded-2xl border cursor-pointer transition-all duration-200 ${statusActive === i ? 'bg-[#FFD700]/10 border-[#FFD700]/30 scale-[1.02]' : 'bg-[var(--input-bg)] border-[var(--border)]'}`}
+               >
                  <div className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
                     <span className="text-[10px] font-black uppercase text-[var(--text-secondary)] tracking-widest">{s.status}</span>
@@ -265,7 +364,8 @@ const Dashboard = () => {
               <BarChart data={analytics.qualityData} layout="vertical">
                 <XAxis type="number" hide />
                 <YAxis dataKey="quality" type="category" stroke={chartText} fontSize={10} width={100} axisLine={false} tickLine={false} />
-                <Bar dataKey="count" fill="#FFD700" radius={[0, 10, 10, 0]} barSize={15} />
+                <Tooltip cursor={{ fill: 'rgba(255,215,0,0.06)' }} contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '15px', fontWeight: 700 }} />
+                <Bar dataKey="count" fill="#FFD700" radius={[0, 10, 10, 0]} barSize={15} isAnimationActive={!chartsAnimated} animationDuration={900} />
               </BarChart>
             </ResponsiveContainer>
           </div>
