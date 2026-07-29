@@ -61,7 +61,7 @@ const QualityDetails = () => {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get('http://localhost:5000/api/admin/qualities', { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get('/api/admin/qualities', { headers: { Authorization: `Bearer ${token}` } });
       const found = res.data.find(q => q.id === parseInt(id));
       setQuality(found);
       if (found?.Styles?.length > 0 && !activeStyleId) setActiveStyleId(found.Styles[0].id);
@@ -109,7 +109,7 @@ const QualityDetails = () => {
     if (!styleModal.name) return;
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/admin/styles', { name: styleModal.name, qualityId: id }, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post('/api/admin/styles', { name: styleModal.name, qualityId: id }, { headers: { Authorization: `Bearer ${token}` } });
       setStyleModal({ open: false, name: '' });
       fetchData();
       notify('success', 'Style created successfully');
@@ -121,8 +121,8 @@ const QualityDetails = () => {
     setIsLoading(true);
     try {
       const data = { styleId: attrModal.styleId, type: attrModal.type, value: attrModal.value, hex_code: attrModal.hex_code };
-      if (attrModal.id) { await axios.put(`http://localhost:5000/api/admin/attributes/${attrModal.id}`, data, { headers: { Authorization: `Bearer ${token}` } }); } 
-      else { await axios.post('http://localhost:5000/api/admin/attributes', data, { headers: { Authorization: `Bearer ${token}` } }); }
+      if (attrModal.id) { await axios.put(`/api/admin/attributes/${attrModal.id}`, data, { headers: { Authorization: `Bearer ${token}` } }); } 
+      else { await axios.post('/api/admin/attributes', data, { headers: { Authorization: `Bearer ${token}` } }); }
       setAttributeModal({ open: false, id: null, styleId: null, type: '', value: '', hex_code: '' });
       fetchData();
       notify('success', 'Database updated');
@@ -134,7 +134,7 @@ const QualityDetails = () => {
     setIsLoading(true);
     try {
         const pricesPayload = sizes.map(s => ({ sizeId: s.id, price: Math.max(0, parseInt(matrixPrices[`${combo.categoryId}-${combo.colorId}-${combo.widthId || 'none'}-${s.id}`]) || 0) }));
-        await axios.post('http://localhost:5000/api/admin/pricing/update', { styleId: activeStyleId, ...combo, prices: pricesPayload }, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.post('/api/admin/pricing/update', { styleId: activeStyleId, ...combo, prices: pricesPayload }, { headers: { Authorization: `Bearer ${token}` } });
         fetchData();
         notify('success', 'Pricing synced successfully');
     } catch (err) { notify('error', 'Sync failed'); } finally { setIsLoading(false); }
@@ -145,7 +145,7 @@ const QualityDetails = () => {
     setIsLoading(true);
     try {
       const url = type === 'style' ? `styles/${itemId}` : `attributes/${itemId}`;
-      await axios.delete(`http://localhost:5000/api/admin/${url}`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(`/api/admin/${url}`, { headers: { Authorization: `Bearer ${token}` } });
       fetchData();
       notify('success', 'Deleted successfully');
     } catch (err) { notify('error', 'Delete failed'); } finally { setIsLoading(false); }
@@ -153,7 +153,7 @@ const QualityDetails = () => {
 
   const toggleStock = async (aid, current) => {
     setIsLoading(true);
-    try { await axios.put(`http://localhost:5000/api/admin/attributes/${aid}`, { in_stock: !current }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } 
+    try { await axios.put(`/api/admin/attributes/${aid}`, { in_stock: !current }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } 
     finally { setIsLoading(false); }
   };
 

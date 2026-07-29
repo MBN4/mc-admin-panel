@@ -18,7 +18,7 @@ const AdminLogin = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/login', formData);
+      const res = await axios.post('/api/auth/login', formData);
       if (res.data.user.role !== 'admin' && res.data.user.role !== 'superadmin') {
         setError('Access Denied: Clearance Required.');
         return;

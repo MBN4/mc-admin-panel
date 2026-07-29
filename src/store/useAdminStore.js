@@ -21,7 +21,7 @@ export const useAdminStore = create((set, get) => ({
   logout: async () => {
     const { token } = get();
     try {
-      await axios.post('http://localhost:5000/api/auth/logout', {}, {
+      await axios.post('/api/auth/logout', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (err) {

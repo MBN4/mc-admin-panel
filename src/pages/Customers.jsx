@@ -64,7 +64,7 @@ const Customers = () => {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get('http://localhost:5000/api/admin/users', {
+      const res = await axios.get('/api/admin/users', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUsers(res.data);
@@ -79,7 +79,7 @@ const Customers = () => {
 
   const handleUpdate = async (id, data) => {
     try {
-      await axios.put(`http://localhost:5000/api/admin/users/${id}`, data, {
+      await axios.put(`/api/admin/users/${id}`, data, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchUsers();
@@ -92,7 +92,7 @@ const Customers = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this customer?')) return;
     try {
-      await axios.delete(`http://localhost:5000/api/admin/users/${id}`, {
+      await axios.delete(`/api/admin/users/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchUsers();

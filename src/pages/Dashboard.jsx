@@ -121,8 +121,8 @@ const Dashboard = () => {
     if (!silent) setIsSyncing(true);
     try {
       const [statsRes, analyticsRes] = await Promise.all([
-        axios.get('http://localhost:5000/api/admin/dashboard-stats', { headers: { Authorization: `Bearer ${token}` } }),
-        axios.get('http://localhost:5000/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } })
+        axios.get('/api/admin/dashboard-stats', { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get('/api/admin/analytics', { headers: { Authorization: `Bearer ${token}` } })
       ]);
       setStats(statsRes.data);
       const parsedAnalytics = {

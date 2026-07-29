@@ -1,45 +1,256 @@
 import React, { forwardRef } from 'react';
 
+const formatDate = (d) => {
+  try { return new Date(d).toLocaleDateString('en-GB'); } catch { return ''; }
+};
+
+// Group an order's items by (quality|style|category|color|width). Each group's
+// cells are the sizes that appear in that group, summed by quantity.
+const groupItems = (items) => {
+  const groups = new Map();
+  for (const it of items) {
+    const key = [it.quality, it.style, it.category, it.color, it.width || '']
+      .join('|');
+    if (!groups.has(key)) {
+      groups.set(key, {
+        quality: it.quality,
+        style: it.style,
+        category: it.category,
+        color: it.color,
+        width: it.width,
+        sizes: new Map(),
+        lineTotal: 0,
+        totalQty: 0,
+      });
+    }
+    const g = groups.get(key);
+    const qty = Number(it.quantity) || 0;
+    const price = Number(it.price_at_purchase) || 0;
+    g.sizes.set(it.size, (g.sizes.get(it.size) || 0) + qty);
+    g.totalQty += qty;
+    g.lineTotal += qty * price;
+  }
+  return [...groups.values()];
+};
+
 const InvoicePrint = forwardRef(({ order }, ref) => {
   if (!order) return null;
   const items = order.items || [];
-  const formatDate = (date) => new Date(date).toLocaleDateString('en-GB');
-  const calculateTotalPcs = () => items.reduce((acc, item) => acc + item.quantity, 0) || 0;
+  const groups = groupItems(items);
+  const totalQty = groups.reduce((a, g) => a + g.totalQty, 0);
+  const grandTotal =
+    Number(order.total_amount) ||
+    groups.reduce((a, g) => a + g.lineTotal, 0);
 
   return (
-    <div ref={ref} className="p-10 bg-white text-black min-h-screen font-serif" style={{ width: '210mm' }}>
-      <div className="border-t-4 border-b border-[#a12525] py-1 mb-6 flex justify-center items-center relative"><div className="w-4 h-4 bg-[#FFD700] rotate-45 absolute -top-2" /></div>
-      <div className="flex justify-between items-start mb-10 px-4">
-        <div className="flex items-center gap-6">
-          <div className="w-24 h-24 bg-gray-50 rounded-2xl flex items-center justify-center border border-gray-100 shadow-sm"><span className="text-gray-400 font-black text-[8px] uppercase tracking-tighter text-center">MADINA<br/>COLLAR</span></div>
-          <div className="h-20 w-[2px] bg-[#FFD700]" />
-          <div><h1 className="text-5xl font-light text-[#a12525] leading-none mb-3" style={{ fontFamily: 'Brush Script MT, cursive' }}>Collar House</h1><div className="flex items-center gap-2 text-[#a12525]"><div className="w-3 h-3 bg-[#a12525] rounded-full flex items-center justify-center"><div className="w-1 h-1 bg-white rounded-full" /></div><p className="text-[11px] font-bold max-w-[220px] leading-tight">Shop # 06, Chaman Market, Mohalla Khudadad, Qissa Khawani Bazar, Peshawar.</p></div></div>
+    <div ref={ref} className="invoice-sheet">
+      <style>{`
+        .invoice-sheet {
+          width: 210mm;
+          min-height: 297mm;
+          background: #ffffff;
+          color: #000000;
+          padding: 12mm 10mm;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 12px;
+          box-sizing: border-box;
+        }
+        .inv-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2px solid #000;
+          padding-bottom: 8px;
+          margin-bottom: 12px;
+        }
+        .inv-brand { font-size: 28px; font-weight: 900; letter-spacing: 2px; }
+        .inv-brand-sub { font-size: 10px; font-weight: 700; letter-spacing: 3px; margin-top: 3px; }
+        .inv-right { text-align: right; }
+        .inv-urdu { font-family: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", serif; font-size: 30px; font-weight: 900; direction: rtl; line-height: 1; }
+        .inv-meta { margin-top: 6px; font-size: 11px; font-weight: 700; }
+        .inv-meta div { margin-top: 2px; }
+
+        .inv-customer {
+          display: grid;
+          grid-template-columns: 2fr 2fr 3fr;
+          gap: 12px;
+          border: 1.5px solid #000;
+          padding: 8px 10px;
+          margin-bottom: 14px;
+        }
+        .inv-field-label { font-size: 9px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #000; margin-bottom: 2px; }
+        .inv-field-value { font-size: 12px; font-weight: 700; }
+
+        .inv-group { margin-bottom: 12px; page-break-inside: avoid; }
+        .inv-group-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          margin-bottom: 3px;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .inv-group-title {
+          font-family: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", "Arial", serif;
+          direction: rtl;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .inv-group-meta { font-size: 10px; font-weight: 700; }
+
+        .inv-grid {
+          display: grid;
+          border: 1.5px solid #000;
+          grid-auto-rows: auto;
+        }
+        .inv-cell {
+          border-right: 1px solid #000;
+          text-align: center;
+          font-size: 11px;
+          font-weight: 700;
+          overflow: hidden;
+        }
+        .inv-cell:last-child { border-right: none; }
+        .inv-cell-head {
+          padding: 3px 2px;
+          border-bottom: 1px solid #000;
+          background: #f0f0f0;
+          font-size: 10px;
+          font-weight: 900;
+        }
+        .inv-cell-body { min-height: 26px; padding: 4px 2px; }
+
+        .inv-summary {
+          margin-top: 16px;
+          border: 2px solid #000;
+        }
+        .inv-summary-row {
+          display: flex;
+          justify-content: space-between;
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 900;
+          border-bottom: 1px solid #000;
+        }
+        .inv-summary-row:last-child { border-bottom: none; background: #f0f0f0; font-size: 14px; }
+
+        .inv-footer {
+          margin-top: 18px;
+          border-top: 1.5px solid #000;
+          padding-top: 8px;
+          display: flex;
+          justify-content: space-between;
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .inv-footer-urdu {
+          font-family: "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu", serif;
+          direction: rtl;
+          font-size: 13px;
+          text-align: center;
+          margin-top: 12px;
+        }
+
+        @media print {
+          @page { size: A4 portrait; margin: 8mm; }
+          html, body { background: #ffffff !important; }
+          body * { visibility: hidden !important; }
+          .invoice-sheet, .invoice-sheet * { visibility: visible !important; }
+          .invoice-sheet {
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%;
+            padding: 0;
+          }
+        }
+      `}</style>
+
+      <div className="inv-header">
+        <div>
+          <div className="inv-brand">MADINA COLLAR</div>
+          <div className="inv-brand-sub">FABRIC & COLLAR HOUSE</div>
         </div>
-        <div className="text-right space-y-3 pt-2">
-          <div className="flex items-center justify-end gap-3"><p className="text-sm font-black text-gray-800">0304-7632727</p><div className="w-5 h-5 bg-[#a12525] rounded-full flex items-center justify-center shadow-sm"><div className="w-1.5 h-1.5 bg-white rounded-full" /></div></div>
-          <div className="flex items-center justify-end gap-3"><p className="text-sm font-black text-gray-800">091-2562727</p><div className="w-5 h-5 bg-[#a12525] rounded-full flex items-center justify-center shadow-sm"><div className="w-1.5 h-1.5 bg-white rounded-full" /></div></div>
+        <div className="inv-right">
+          <div className="inv-urdu">انوائس</div>
+          <div className="inv-meta">
+            <div>Invoice #: SL_{10000 + order.id}</div>
+            <div>Date: {formatDate(order.createdAt)}</div>
+            <div>Status: {(order.status || '').toUpperCase()}</div>
+          </div>
         </div>
       </div>
-      <div className="flex justify-between text-xs font-black mb-6 px-4 py-3 bg-gray-50 rounded-xl border border-gray-100 uppercase tracking-widest shadow-inner"><p>Date: {formatDate(order.createdAt)}</p><p>InvNo: SL_{10000 + order.id}</p><p>Handler: Admin</p></div>
-      <div className="bg-[#a12525] text-white text-center py-2.5 font-black text-sm tracking-[0.3em] mb-6 uppercase shadow-md">Customer identification</div>
-      <div className="grid grid-cols-2 gap-x-12 gap-y-6 text-sm mb-10 px-6">
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Name:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold uppercase tracking-tight">{order.User?.username || 'Guest'}</span></div>
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Bilty:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold"></span></div>
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Address:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold">{order.bilti_info || '-'}</span></div>
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Logistics:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold"></span></div>
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Phone:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold">{order.User?.phone || '-'}</span></div>
-        <div className="flex items-end gap-3"><span className="font-black text-[#a12525] uppercase text-[10px]">Weight:</span><span className="border-b-2 border-gray-100 flex-1 pb-1 font-bold"></span></div>
+
+      <div className="inv-customer">
+        <div>
+          <div className="inv-field-label">Buyer</div>
+          <div className="inv-field-value">{order.User?.username || 'Guest'}</div>
+        </div>
+        <div>
+          <div className="inv-field-label">Phone</div>
+          <div className="inv-field-value">{order.User?.phone || '-'}</div>
+        </div>
+        <div>
+          <div className="inv-field-label">Bilti Details</div>
+          <div className="inv-field-value">{order.bilti_info || '-'}</div>
+        </div>
       </div>
-      <table className="w-full border-collapse mb-10 text-[11px]">
-        <thead><tr className="bg-[#a12525] text-white uppercase italic text-left"><th className="border border-black p-3 w-10 text-center">#</th><th className="border border-black p-3">Description</th><th className="border border-black p-3 w-28 text-center">Quantity</th><th className="border border-black p-3 w-24 text-center">Rate</th><th className="border border-black p-3 w-28 text-center">Total</th></tr></thead>
-        <tbody>{items.map((item, idx) => (<tr key={idx} className="font-bold border-b border-gray-200"><td className="border border-black p-3 text-center bg-gray-50">{idx + 1}</td><td className="border border-black p-3 uppercase font-black tracking-tighter">{item.quality} {item.style} - {item.category} / {item.color} (S:{item.size}) {item.width ? `[W:${item.width}]` : ''}</td><td className="border border-black p-3 text-center bg-gray-50 font-black">{item.quantity} PCS</td><td className="border border-black p-3 text-center">{item.price_at_purchase}</td><td className="border border-black p-3 text-center bg-gray-50">{(item.price_at_purchase * item.quantity).toLocaleString()}</td></tr>))}</tbody>
-      </table>
-      <div className="flex justify-between items-start px-4">
-        <div className="text-[11px] font-black space-y-2 py-4 px-6 bg-gray-50 rounded-2xl border border-gray-100 shadow-sm"><div className="flex justify-between w-40 text-gray-500 uppercase tracking-tighter"><span>Lines:</span> <span className="text-black">{items.length}</span></div><div className="flex justify-between w-40 text-gray-500 uppercase tracking-tighter"><span>Volume:</span> <span className="text-black">{calculateTotalPcs()} PCS</span></div></div>
-        <div className="w-72 space-y-1"><div className="flex justify-between text-xs font-black py-2 px-2"><span>Subtotal</span><span>PKR {order.total_amount.toLocaleString()}</span></div><div className="flex justify-between text-xs font-black py-2 px-2 border-t border-gray-100"><span>Tax</span><span>PKR 0</span></div><div className="bg-[#a12525] text-white p-4 mt-4 flex justify-between items-center font-black rounded-xl shadow-lg border border-[#800000]"><span className="text-sm tracking-[0.2em]">TOTAL</span><span className="text-2xl font-black tracking-tighter">PKR {order.total_amount.toLocaleString()}</span></div><div className="pt-4 space-y-2"><div className="flex justify-between text-[11px] font-black text-gray-400 px-2 uppercase tracking-tighter"><span>Status:</span> <span className="text-[#a12525]">PAID IN FULL</span></div></div></div>
+
+      {groups.map((g, gi) => {
+        const sizeEntries = [...g.sizes.entries()];
+        const cols = Math.max(sizeEntries.length, 1);
+        return (
+          <div className="inv-group" key={gi}>
+            <div className="inv-group-header">
+              <div className="inv-group-meta">
+                {g.category}{g.color ? ` / ${g.color}` : ''}{g.width ? ` / W:${g.width}` : ''} — Qty {g.totalQty}
+              </div>
+              <div className="inv-group-title">
+                {g.style} {g.quality}
+              </div>
+            </div>
+            <div className="inv-grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+              {sizeEntries.map(([sizeVal, qty], i) => (
+                <div className="inv-cell" key={`h-${i}`}>
+                  <div className="inv-cell-head">{sizeVal}</div>
+                  <div className="inv-cell-body">{qty}</div>
+                </div>
+              ))}
+              {sizeEntries.length === 0 && (
+                <div className="inv-cell">
+                  <div className="inv-cell-head">—</div>
+                  <div className="inv-cell-body"></div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {groups.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '24px', fontWeight: 700 }}>No items on this order.</div>
+      )}
+
+      <div className="inv-summary">
+        <div className="inv-summary-row">
+          <span>Total Lines</span>
+          <span>{groups.length}</span>
+        </div>
+        <div className="inv-summary-row">
+          <span>Total Quantity</span>
+          <span>{totalQty} PCS</span>
+        </div>
+        <div className="inv-summary-row">
+          <span>GRAND TOTAL</span>
+          <span>Rs {Number(grandTotal).toLocaleString()}</span>
+        </div>
       </div>
-      <div className="mt-auto pt-32 pb-10">
-        <div className="border-t-2 border-b-2 border-[#a12525] py-2 flex justify-center relative bg-gray-50/50"><div className="w-4 h-4 bg-[#FFD700] rotate-45 absolute -top-2" /><p className="text-xl font-bold py-6 text-center text-[#a12525] px-10 leading-relaxed" dir="rtl" style={{ fontFamily: 'Arial' }}>نوٹ: خریدا ہوا مال واپس یا تبدیل ہو جائے گا۔ (بل دکھا کے)  |  ہم دعا گو ہیں کہ ہم سے خریدا ہوا مال آپ کیلئے خیر و برکت کا باعث بنے۔ آمین</p><div className="w-4 h-4 bg-[#FFD700] rotate-45 absolute -bottom-2" /></div>
+
+      <div className="inv-footer">
+        <div>Printed: {formatDate(new Date())}</div>
+        <div>Handler: Admin</div>
+      </div>
+      <div className="inv-footer-urdu">
+        نوٹ: خریدا ہوا مال بل دکھا کر واپس یا تبدیل ہو سکتا ہے۔ شکریہ۔
       </div>
     </div>
   );

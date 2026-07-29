@@ -16,7 +16,7 @@ const AdminForgotPassword = () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/admin/forgot-password', formData);
+      const res = await axios.post('/api/auth/admin/forgot-password', formData);
       setMessage({ type: 'success', text: res.data.msg });
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {

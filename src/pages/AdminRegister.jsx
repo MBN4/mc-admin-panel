@@ -16,7 +16,7 @@ const AdminRegister = () => {
     setLoading(true);
     setMessage({ type: '', text: '' });
     try {
-      const res = await axios.post('http://localhost:5000/api/auth/admin/register', formData);
+      const res = await axios.post('/api/auth/admin/register', formData);
       setMessage({ type: 'success', text: res.data.msg });
       setTimeout(() => navigate('/login'), 2000);
     } catch (err) {

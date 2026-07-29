@@ -77,7 +77,7 @@ const Qualities = () => {
   const fetchQualities = async () => {
     setIsLoading(true);
     try {
-        const res = await axios.get('http://localhost:5000/api/admin/qualities');
+        const res = await axios.get('/api/admin/qualities');
         setQualities(res.data);
     } finally { setIsLoading(false); }
   };
@@ -104,9 +104,9 @@ const Qualities = () => {
       };
 
       if (data.id) {
-        await axios.put(`http://localhost:5000/api/admin/qualities/${data.id}`, formData, config);
+        await axios.put(`/api/admin/qualities/${data.id}`, formData, config);
       } else {
-        await axios.post('http://localhost:5000/api/admin/qualities', formData, config);
+        await axios.post('/api/admin/qualities', formData, config);
       }
       fetchQualities();
       setShowModal(false);
@@ -121,7 +121,7 @@ const Qualities = () => {
     if (!window.confirm('Delete this collection?')) return;
     setIsLoading(true);
     try {
-        await axios.delete(`http://localhost:5000/api/admin/qualities/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+        await axios.delete(`/api/admin/qualities/${id}`, { headers: { Authorization: `Bearer ${token}` } });
         fetchQualities();
     } finally { setIsLoading(false); }
   };

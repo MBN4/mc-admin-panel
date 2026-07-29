@@ -37,7 +37,7 @@ const Staff = () => {
   const fetchStaff = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get('http://localhost:5000/api/admin/staff', { 
+      const res = await axios.get('/api/admin/staff', { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setStaff(res.data);
@@ -54,7 +54,7 @@ const Staff = () => {
     if (!formData.username || !formData.email || !formData.password) return;
     setIsLoading(true);
     try {
-      await axios.post('http://localhost:5000/api/admin/staff', formData, { 
+      await axios.post('/api/admin/staff', formData, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       setModalOpen(false);
@@ -71,7 +71,7 @@ const Staff = () => {
     if (!window.confirm("Terminate this administrator's system access permanently?")) return;
     setIsLoading(true);
     try {
-      await axios.delete(`http://localhost:5000/api/admin/staff/${id}`, { 
+      await axios.delete(`/api/admin/staff/${id}`, { 
         headers: { Authorization: `Bearer ${token}` } 
       });
       fetchStaff();

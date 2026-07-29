@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { 
-  LayoutDashboard, 
-  ShoppingBag, 
-  Layers, 
-  Users, 
-  LogOut, 
-  Menu, 
+  LayoutDashboard,
+  ShoppingBag,
+  Layers,
+  Users,
+  LogOut,
+  Menu,
   X,
   ChevronRight,
   ShieldAlert
@@ -97,13 +97,24 @@ const AdminLayout = () => {
               <p className="text-sm font-bold text-[var(--text-primary)] truncate">{admin?.email}</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             className="w-full flex items-center gap-4 p-4 rounded-2xl text-red-500 hover:bg-red-500/5 transition-all font-bold text-xs uppercase tracking-widest"
           >
             <LogOut size={18} />
             Logout System
           </button>
+          <div className="pt-2 text-center text-[9px] font-bold uppercase tracking-widest text-[var(--text-secondary)] opacity-60">
+            Designed &amp; Developed by{' '}
+            <a
+              href="https://toptrendingms.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#FFD700] hover:opacity-100 transition-opacity"
+            >
+              TOPTRENDING
+            </a>
+          </div>
         </div>
       </aside>
 

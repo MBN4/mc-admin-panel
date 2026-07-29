@@ -7,7 +7,7 @@ import "./index.css";
 // Configure axios defaults and interceptors so all requests include the
 // admin token from localStorage and 401 responses force a logout.
 axios.defaults.baseURL =
-  import.meta.env.VITE_API_URL || "http://localhost:5000";
+  import.meta.env.VITE_API_URL || "https://api.almadina.site";
 axios.interceptors.request.use(
   (config) => {
     try {
