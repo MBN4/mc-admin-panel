@@ -48,7 +48,7 @@ const QualityDetails = () => {
   const [mode, setMode] = useState('structure');
   const [notification, setNotification] = useState(null);
   
-  const [styleModal, setStyleModal] = useState({ open: false, name: '' });
+  const [styleModal, setStyleModal] = useState({ open: false, id: null, name: '' });
   const [attrModal, setAttributeModal] = useState({ open: false, id: null, styleId: null, type: '', value: '', hex_code: '' });
   const [combo, setCombo] = useState({ categoryId: null, colorId: null, widthId: null });
   const [matrixPrices, setMatrixPrices] = useState({});
@@ -86,11 +86,57 @@ const QualityDetails = () => {
         // Clamp to >= 0 — never surface negative prices even if bad data exists in the DB.
         initialPrices[key] = Math.max(0, Number(p.price) || 0);
       });
-      setMatrixPrices(initialPrices);
+      // Merge, don't replace: preserve any keys the user has in flight (e.g.
+      // untouched sizes with a value they just typed but haven't saved) so a
+      // refetch triggered by an unrelated save doesn't wipe local edits.
+      // Incoming server values still win for keys the DB returned.
+      setMatrixPrices(prev => ({ ...prev, ...initialPrices }));
     }
   }, [activeStyleId, currentStyle]);
 
-  const toggleCombo = (key, val) => setCombo(prev => ({ ...prev, [key]: prev[key] === val ? null : val }));
+  // Frontend-only constraint for Madina Collar > Bain: Black is only
+  // compatible with the Classic category. Selecting Black auto-selects
+  // Classic; clicking a non-Classic category while Black is selected is
+  // treated as a no-op (Black stays paired with Classic until the user
+  // deselects it themselves).
+  const isMcBain =
+    quality?.name === 'Madina Collar' &&
+    (currentStyle?.name || '').trim().toLowerCase() === 'bain';
+  const classicCat = useMemo(
+    () => categories.find(c => (c.value || '').toLowerCase().includes('classic')),
+    [categories],
+  );
+  const blackColor = useMemo(
+    () => colors.find(c =>
+      (c.value || '').toLowerCase().includes('black') ||
+      (c.hex_code || '').toLowerCase() === '#000000'
+    ),
+    [colors],
+  );
+
+  const toggleCombo = (key, val) => setCombo(prev => {
+    const next = { ...prev, [key]: prev[key] === val ? null : val };
+    if (isMcBain) {
+      // Selecting (not deselecting) Black -> lock category to Classic.
+      if (
+        key === 'colorId' &&
+        blackColor && val === blackColor.id &&
+        next.colorId === blackColor.id &&
+        classicCat
+      ) {
+        next.categoryId = classicCat.id;
+      }
+      // Trying to pick a non-Classic category while Black is selected -> ignore.
+      if (
+        key === 'categoryId' &&
+        blackColor && prev.colorId === blackColor.id &&
+        classicCat && val !== classicCat.id
+      ) {
+        return prev;
+      }
+    }
+    return next;
+  });
 
   const handlePriceUpdate = (key, val) => {
     const cleanVal = val.replace(/[^0-9]/g, '');
@@ -109,10 +155,17 @@ const QualityDetails = () => {
     if (!styleModal.name) return;
     setIsLoading(true);
     try {
-      await axios.post('/api/admin/styles', { name: styleModal.name, qualityId: id }, { headers: { Authorization: `Bearer ${token}` } });
-      setStyleModal({ open: false, name: '' });
-      fetchData();
-      notify('success', 'Style created successfully');
+      if (styleModal.id) {
+        await axios.put(`/api/admin/styles/${styleModal.id}`, { name: styleModal.name }, { headers: { Authorization: `Bearer ${token}` } });
+      } else {
+        await axios.post('/api/admin/styles', { name: styleModal.name, qualityId: id }, { headers: { Authorization: `Bearer ${token}` } });
+      }
+      setStyleModal({ open: false, id: null, name: '' });
+      // Refetch so the new / renamed style comes back with its full record
+      // (id, ProductAttributes[], PriceMatrices[]) — the tab UI and its
+      // edit/delete buttons all key off that id.
+      await fetchData();
+      notify('success', styleModal.id ? 'Style updated' : 'Style created successfully');
     } catch (err) { notify('error', 'Action failed'); } finally { setIsLoading(false); }
   };
 
@@ -131,9 +184,26 @@ const QualityDetails = () => {
 
   const savePricing = async () => {
     if (!combo.categoryId || !combo.colorId || (widths.length > 0 && !combo.widthId)) { notify('error', 'Select all combinations'); return; }
+    // Only send sizes the user has actually priced (value > 0). Skipping
+    // untouched / zero / undefined entries prevents the backend from
+    // overwriting existing DB rows to 0 — the root cause of "prices vanish
+    // after being saved". To clear a price the user must delete the size
+    // attribute itself.
+    const pricesPayload = sizes.reduce((acc, s) => {
+      const key = `${combo.categoryId}-${combo.colorId}-${combo.widthId || 'none'}-${s.id}`;
+      const raw = matrixPrices[key];
+      const parsed = parseInt(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        acc.push({ sizeId: s.id, price: parsed });
+      }
+      return acc;
+    }, []);
+    if (pricesPayload.length === 0) {
+      notify('error', 'Enter at least one price greater than 0');
+      return;
+    }
     setIsLoading(true);
     try {
-        const pricesPayload = sizes.map(s => ({ sizeId: s.id, price: Math.max(0, parseInt(matrixPrices[`${combo.categoryId}-${combo.colorId}-${combo.widthId || 'none'}-${s.id}`]) || 0) }));
         await axios.post('/api/admin/pricing/update', { styleId: activeStyleId, ...combo, prices: pricesPayload }, { headers: { Authorization: `Bearer ${token}` } });
         fetchData();
         notify('success', 'Pricing synced successfully');
@@ -176,8 +246,38 @@ const QualityDetails = () => {
       </header>
 
       <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
-        {quality?.Styles?.map(s => (<button key={s.id} onClick={() => { setActiveStyleId(s.id); setCombo({ categoryId: null, colorId: null, widthId: null }); }} className={`px-10 py-5 rounded-3xl font-black uppercase text-xs tracking-widest border transition-all whitespace-nowrap ${activeStyleId === s.id ? 'bg-[#FFD700] text-black border-[#FFD700] shadow-lg' : 'bg-[var(--input-bg)] text-[var(--text-secondary)] border-[var(--border)]'}`}>{s.name}</button>))}
-        {isMaster && <button onClick={() => setStyleModal({ open: true, name: '' })} className="px-10 py-5 rounded-3xl font-black uppercase text-xs tracking-widest border border-dashed border-[#FFD700] text-[#FFD700] hover:bg-[#FFD700] hover:text-black transition-all">+ New Style</button>}
+        {quality?.Styles?.map(s => {
+          const isActive = activeStyleId === s.id;
+          return (
+            <div key={s.id} className={`flex items-center gap-1 rounded-3xl border transition-all whitespace-nowrap pr-2 ${isActive ? 'bg-[#FFD700] border-[#FFD700] shadow-lg' : 'bg-[var(--input-bg)] border-[var(--border)]'}`}>
+              <button
+                onClick={() => { setActiveStyleId(s.id); setCombo({ categoryId: null, colorId: null, widthId: null }); }}
+                className={`px-8 py-5 font-black uppercase text-xs tracking-widest ${isActive ? 'text-black' : 'text-[var(--text-secondary)]'}`}
+              >
+                {s.name}
+              </button>
+              {isMaster && (
+                <>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setStyleModal({ open: true, id: s.id, name: s.name }); }}
+                    className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-black/70 hover:text-black hover:bg-black/10' : 'text-blue-400 hover:text-blue-300'}`}
+                    title="Rename style"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); deleteItem('style', s.id); }}
+                    className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-red-700 hover:text-red-900 hover:bg-black/10' : 'text-red-400 hover:text-red-300'}`}
+                    title="Delete style"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
+        {isMaster && <button onClick={() => setStyleModal({ open: true, id: null, name: '' })} className="px-10 py-5 rounded-3xl font-black uppercase text-xs tracking-widest border border-dashed border-[#FFD700] text-[#FFD700] hover:bg-[#FFD700] hover:text-black transition-all">+ New Style</button>}
       </div>
 
       {mode === 'structure' ? (
@@ -213,7 +313,21 @@ const QualityDetails = () => {
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
             <div className="xl:col-span-1 glass-card p-8 rounded-[3rem] space-y-10 border border-[var(--border)] shadow-2xl">
                 <div className="space-y-4"><p className="text-[10px] font-black text-[#FFD700] uppercase ml-2 tracking-widest">1. Category</p>
-                    <div className="flex flex-wrap gap-2">{categories.map(c => (<button key={c.id} onClick={() => toggleCombo('categoryId', c.id)} className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${combo.categoryId === c.id ? 'bg-[#FFD700] text-black border-[#FFD700]' : 'bg-black/20 text-gray-500 border-white/5 hover:border-[#FFD700]/30'}`}>{c.value}</button>))}</div>
+                    <div className="flex flex-wrap gap-2">{categories.map(c => {
+                      const blackActive = isMcBain && blackColor && combo.colorId === blackColor.id;
+                      const lockedOut = blackActive && classicCat && c.id !== classicCat.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => toggleCombo('categoryId', c.id)}
+                          disabled={lockedOut}
+                          title={lockedOut ? 'Black is only available with Classic' : undefined}
+                          className={`px-5 py-3 rounded-2xl text-[10px] font-black uppercase border transition-all ${combo.categoryId === c.id ? 'bg-[#FFD700] text-black border-[#FFD700]' : 'bg-black/20 text-gray-500 border-white/5 hover:border-[#FFD700]/30'} ${lockedOut ? 'opacity-30 cursor-not-allowed hover:border-white/5' : ''}`}
+                        >
+                          {c.value}
+                        </button>
+                      );
+                    })}</div>
                 </div>
                 <div className="space-y-4"><p className="text-[10px] font-black text-[#FFD700] uppercase ml-2 tracking-widest">2. Color</p>
                     <div className="flex flex-wrap gap-4">{colors.map(c => {
@@ -257,7 +371,7 @@ const QualityDetails = () => {
         </div>
       )}
 
-      <CustomModal title="Style Setup" isOpen={styleModal.open} onClose={() => setStyleModal({ ...styleModal, open: false })}>
+      <CustomModal title={styleModal.id ? 'Rename Style' : 'Style Setup'} isOpen={styleModal.open} onClose={() => setStyleModal({ open: false, id: null, name: '' })}>
         <div className="space-y-6">
             <div className="space-y-2"><p className="text-[10px] font-black uppercase text-[#FFD700] ml-1 tracking-widest">Style Name</p>
                 <div className="relative"><div className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500"><Type size={18}/></div><input className="w-full input-field rounded-2xl py-5 pl-14 pr-5 outline-none font-bold text-white" value={styleModal.name} onChange={(e) => setStyleModal({ ...styleModal, name: e.target.value })} placeholder="e.g. Roll Patti" /></div>

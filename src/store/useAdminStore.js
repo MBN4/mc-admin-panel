@@ -18,6 +18,14 @@ export const useAdminStore = create((set, get) => ({
       return { theme: newTheme };
     });
   },
+  // Wipe local auth without hitting /logout. Used by the 401 interceptor and
+  // by the JWT-expiry check on app load — both cases where calling the
+  // server would just get another 401.
+  clearAuth: () => {
+    localStorage.removeItem('adminUser');
+    localStorage.removeItem('adminToken');
+    set({ admin: null, token: null });
+  },
   logout: async () => {
     const { token } = get();
     try {
