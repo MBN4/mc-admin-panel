@@ -2,7 +2,10 @@ import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Trash2, Edit3, X, Image as ImageIcon, Save, Upload, Link as LinkIcon, Settings2 } from 'lucide-react';
+import { Plus, Trash2, Edit3, X, Image as ImageIcon, Save, Upload, Link as LinkIcon, Settings2, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useAdminStore } from '../store/useAdminStore';
 import MagnificentLoader from '../components/MagnificentLoader';
 
@@ -62,6 +65,42 @@ const QualityModal = ({ quality, onClose, onSave }) => {
           </button>
         </div>
       </motion.div>
+    </motion.div>
+  );
+};
+
+const SortableQualityCard = ({ item, navigate, onEdit, onDelete }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <motion.div ref={setNodeRef} style={style} layout className="glass-card rounded-[3rem] overflow-hidden group relative">
+      <button
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder"
+        className="absolute top-6 right-6 z-10 p-2.5 rounded-full bg-black/50 text-white cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical size={16} />
+      </button>
+      <div className="h-64 bg-black relative flex items-center justify-center overflow-hidden">
+        {item.image_url ? <img src={item.image_url} alt="" className="w-full h-full object-contain p-8 group-hover:scale-110 transition-transform duration-700" /> : <ImageIcon size={48} className="text-white/10" />}
+        {item.tag && <div className="absolute top-6 left-6 gold-gradient px-4 py-1.5 rounded-full text-[10px] font-black text-black uppercase tracking-widest shadow-lg">{item.tag}</div>}
+      </div>
+      <div className="p-8">
+        <h3 className="text-2xl font-black text-[var(--text-primary)] tracking-tighter uppercase mb-6 truncate">{item.name}</h3>
+        <div className="flex flex-col gap-3">
+          <button onClick={() => navigate(`/qualities/${item.id}`)} className="w-full gold-gradient p-4 rounded-2xl text-black font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-yellow-500/10"><Settings2 size={14} /> Manage Configuration</button>
+          <div className="flex gap-2">
+              <button onClick={() => onEdit(item)} className="flex-1 bg-[var(--input-bg)] hover:bg-[#FFD700] hover:text-black p-4 rounded-2xl text-[var(--text-primary)] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[var(--border)] transition-all"><Edit3 size={14} /> Edit</button>
+              <button onClick={() => onDelete(item.id)} className="bg-red-500/5 hover:bg-red-500 p-4 rounded-2xl text-red-500 hover:text-white font-black text-[10px] uppercase tracking-widest border border-red-500/10 transition-all"><Trash2 size={16} /></button>
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
@@ -126,6 +165,28 @@ const Qualities = () => {
     } finally { setIsLoading(false); }
   };
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = qualities.findIndex((q) => q.id === active.id);
+    const newIndex = qualities.findIndex((q) => q.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(qualities, oldIndex, newIndex);
+    setQualities(reordered);
+    try {
+      await axios.put(
+        '/api/admin/reorder',
+        { entityType: 'quality', items: reordered.map((q, idx) => ({ id: q.id, sortOrder: idx })) },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    } catch (err) {
+      console.error('Reorder failed:', err.response?.data || err.message);
+      fetchQualities();
+    }
+  };
+
   return (
     <div className="space-y-12">
       {isLoading && <MagnificentLoader />}
@@ -137,26 +198,21 @@ const Qualities = () => {
         <button onClick={() => { setModalData(null); setShowModal(true); }} className="gold-gradient px-8 py-4 rounded-2xl flex items-center gap-3 text-black font-black uppercase tracking-widest text-xs shadow-xl active:scale-95 transition-transform"><Plus size={18} /> New Collection</button>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-        {qualities.map((item) => (
-          <motion.div key={item.id} layout className="glass-card rounded-[3rem] overflow-hidden group">
-            <div className="h-64 bg-black relative flex items-center justify-center overflow-hidden">
-              {item.image_url ? <img src={item.image_url} alt="" className="w-full h-full object-contain p-8 group-hover:scale-110 transition-transform duration-700" /> : <ImageIcon size={48} className="text-white/10" />}
-              {item.tag && <div className="absolute top-6 left-6 gold-gradient px-4 py-1.5 rounded-full text-[10px] font-black text-black uppercase tracking-widest shadow-lg">{item.tag}</div>}
-            </div>
-            <div className="p-8">
-              <h3 className="text-2xl font-black text-[var(--text-primary)] tracking-tighter uppercase mb-6 truncate">{item.name}</h3>
-              <div className="flex flex-col gap-3">
-                <button onClick={() => navigate(`/qualities/${item.id}`)} className="w-full gold-gradient p-4 rounded-2xl text-black font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-lg shadow-yellow-500/10"><Settings2 size={14} /> Manage Configuration</button>
-                <div className="flex gap-2">
-                    <button onClick={() => { setModalData(item); setShowModal(true); }} className="flex-1 bg-[var(--input-bg)] hover:bg-[#FFD700] hover:text-black p-4 rounded-2xl text-[var(--text-primary)] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 border border-[var(--border)] transition-all"><Edit3 size={14} /> Edit</button>
-                    <button onClick={() => handleDelete(item.id)} className="bg-red-500/5 hover:bg-red-500 p-4 rounded-2xl text-red-500 hover:text-white font-black text-[10px] uppercase tracking-widest border border-red-500/10 transition-all"><Trash2 size={16} /></button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={qualities.map((q) => q.id)} strategy={rectSortingStrategy}>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+            {qualities.map((item) => (
+              <SortableQualityCard
+                key={item.id}
+                item={item}
+                navigate={navigate}
+                onEdit={(q) => { setModalData(q); setShowModal(true); }}
+                onDelete={handleDelete}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
       <AnimatePresence>{showModal && <QualityModal quality={modalData} onClose={() => setShowModal(false)} onSave={handleSave} />}</AnimatePresence>
     </div>
   );

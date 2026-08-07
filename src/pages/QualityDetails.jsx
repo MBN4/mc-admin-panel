@@ -2,12 +2,63 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
+import {
   ArrowLeft, Plus, Trash2, Check, X, Layers, Palette,
-  Maximize2, Ruler, Save, Type, Hash, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, Edit2
+  Maximize2, Ruler, Save, Type, Hash, CheckCircle2, AlertCircle, ChevronUp, ChevronDown, Edit2, GripVertical
 } from 'lucide-react';
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { SortableContext, arrayMove, horizontalListSortingStrategy, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useAdminStore } from '../store/useAdminStore';
 import MagnificentLoader from '../components/MagnificentLoader';
+
+const SortableStyleTab = ({ style, isActive, isMaster, onSelect, onRename, onDelete }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: style.id });
+  const dragStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div ref={setNodeRef} style={dragStyle} className={`flex items-center gap-1 rounded-3xl border transition-all whitespace-nowrap pr-2 ${isActive ? 'bg-[#FFD700] border-[#FFD700] shadow-lg' : 'bg-[var(--input-bg)] border-[var(--border)]'}`}>
+      {isMaster && (
+        <button {...attributes} {...listeners} aria-label="Drag to reorder style" className={`pl-3 cursor-grab active:cursor-grabbing touch-none ${isActive ? 'text-black/50 hover:text-black' : 'text-gray-500 hover:text-[var(--text-primary)]'}`}>
+          <GripVertical size={14} />
+        </button>
+      )}
+      <button onClick={onSelect} className={`px-6 py-5 font-black uppercase text-xs tracking-widest ${isActive ? 'text-black' : 'text-[var(--text-secondary)]'}`}>
+        {style.name}
+      </button>
+      {isMaster && (
+        <>
+          <button onClick={onRename} className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-black/70 hover:text-black hover:bg-black/10' : 'text-blue-400 hover:text-blue-300'}`} title="Rename style">
+            <Edit2 size={14} />
+          </button>
+          <button onClick={onDelete} className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-red-700 hover:text-red-900 hover:bg-black/10' : 'text-red-400 hover:text-red-300'}`} title="Delete style">
+            <Trash2 size={14} />
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+const SortableAttributeChip = ({ attr, groupType, isMaster, onToggleStock, onEdit, onDelete }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: attr.id });
+  const dragStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div ref={setNodeRef} style={dragStyle} className={`group flex items-center gap-3 p-4 rounded-2xl border transition-all ${attr.in_stock ? 'bg-[var(--input-bg)] border-[var(--border)]' : 'bg-red-500/5 border-red-500/10'}`}>
+      {isMaster && (
+        <button {...attributes} {...listeners} aria-label="Drag to reorder" className="text-gray-500 hover:text-[var(--text-primary)] cursor-grab active:cursor-grabbing touch-none">
+          <GripVertical size={14} />
+        </button>
+      )}
+      {groupType === 'color' && attr.hex_code && <div className="w-5 h-5 rounded-full border border-black/20 shadow-inner" style={{ backgroundColor: attr.hex_code }} />}
+      <span className={`text-[11px] font-black uppercase ${attr.in_stock ? 'text-[var(--text-primary)]' : 'text-red-400 line-through'}`}>{attr.value}</span>
+      <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-2">
+        <button onClick={onToggleStock} className="text-green-500 hover:text-green-400"><Check size={12} /></button>
+        <button onClick={onEdit} className="text-blue-500 hover:text-blue-400"><Edit2 size={12} /></button>
+        <button onClick={onDelete} className="text-red-500 hover:text-red-400"><Trash2 size={12} /></button>
+      </div>
+    </div>
+  );
+};
 
 const Toast = ({ type, message, onClose }) => (
   <motion.div 
@@ -223,8 +274,50 @@ const QualityDetails = () => {
 
   const toggleStock = async (aid, current) => {
     setIsLoading(true);
-    try { await axios.put(`/api/admin/attributes/${aid}`, { in_stock: !current }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); } 
+    try { await axios.put(`/api/admin/attributes/${aid}`, { in_stock: !current }, { headers: { Authorization: `Bearer ${token}` } }); fetchData(); }
     finally { setIsLoading(false); }
+  };
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const persistReorder = async (entityType, items) => {
+    try {
+      await axios.put(
+        '/api/admin/reorder',
+        { entityType, items: items.map((item, idx) => ({ id: item.id, sortOrder: idx })) },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+    } catch (err) {
+      notify('error', 'Reorder failed');
+      fetchData();
+    }
+  };
+
+  const handleStyleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !quality?.Styles) return;
+    const styles = quality.Styles;
+    const oldIndex = styles.findIndex(s => s.id === active.id);
+    const newIndex = styles.findIndex(s => s.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(styles, oldIndex, newIndex);
+    setQuality(prev => ({ ...prev, Styles: reordered }));
+    persistReorder('style', reordered);
+  };
+
+  const handleAttributeDragEnd = (groupType) => (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !currentStyle?.ProductAttributes) return;
+    const groupItems = currentStyle.ProductAttributes.filter(a => a.type === groupType);
+    const oldIndex = groupItems.findIndex(a => a.id === active.id);
+    const newIndex = groupItems.findIndex(a => a.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reorderedGroup = arrayMove(groupItems, oldIndex, newIndex);
+    const otherItems = currentStyle.ProductAttributes.filter(a => a.type !== groupType);
+    const newAttributes = [...otherItems, ...reorderedGroup];
+    const newStyles = quality.Styles.map(s => s.id === activeStyleId ? { ...s, ProductAttributes: newAttributes } : s);
+    setQuality(prev => ({ ...prev, Styles: newStyles }));
+    persistReorder('attribute', reorderedGroup);
   };
 
   return (
@@ -246,37 +339,21 @@ const QualityDetails = () => {
       </header>
 
       <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
-        {quality?.Styles?.map(s => {
-          const isActive = activeStyleId === s.id;
-          return (
-            <div key={s.id} className={`flex items-center gap-1 rounded-3xl border transition-all whitespace-nowrap pr-2 ${isActive ? 'bg-[#FFD700] border-[#FFD700] shadow-lg' : 'bg-[var(--input-bg)] border-[var(--border)]'}`}>
-              <button
-                onClick={() => { setActiveStyleId(s.id); setCombo({ categoryId: null, colorId: null, widthId: null }); }}
-                className={`px-8 py-5 font-black uppercase text-xs tracking-widest ${isActive ? 'text-black' : 'text-[var(--text-secondary)]'}`}
-              >
-                {s.name}
-              </button>
-              {isMaster && (
-                <>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setStyleModal({ open: true, id: s.id, name: s.name }); }}
-                    className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-black/70 hover:text-black hover:bg-black/10' : 'text-blue-400 hover:text-blue-300'}`}
-                    title="Rename style"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteItem('style', s.id); }}
-                    className={`p-1.5 rounded-lg transition-all ${isActive ? 'text-red-700 hover:text-red-900 hover:bg-black/10' : 'text-red-400 hover:text-red-300'}`}
-                    title="Delete style"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })}
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleStyleDragEnd}>
+          <SortableContext items={(quality?.Styles || []).map(s => s.id)} strategy={horizontalListSortingStrategy}>
+            {quality?.Styles?.map(s => (
+              <SortableStyleTab
+                key={s.id}
+                style={s}
+                isActive={activeStyleId === s.id}
+                isMaster={isMaster}
+                onSelect={() => { setActiveStyleId(s.id); setCombo({ categoryId: null, colorId: null, widthId: null }); }}
+                onRename={() => setStyleModal({ open: true, id: s.id, name: s.name })}
+                onDelete={() => deleteItem('style', s.id)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
         {isMaster && <button onClick={() => setStyleModal({ open: true, id: null, name: '' })} className="px-10 py-5 rounded-3xl font-black uppercase text-xs tracking-widest border border-dashed border-[#FFD700] text-[#FFD700] hover:bg-[#FFD700] hover:text-black transition-all">+ New Style</button>}
       </div>
 
@@ -293,19 +370,23 @@ const QualityDetails = () => {
                         <div className="flex items-center gap-3"><group.icon size={16} className="text-[#FFD700]" /><h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-secondary)]">{group.label}</h3></div>
                         <button onClick={() => setAttributeModal({ open: true, id: null, styleId: activeStyleId, type: group.type, value: '', hex_code: '' })} className="p-2 bg-[#FFD700]/10 text-[#FFD700] rounded-lg hover:bg-[#FFD700] hover:text-black transition-all"><Plus size={14} /></button>
                     </div>
-                    <div className="flex flex-wrap gap-4">
-                        {currentStyle?.ProductAttributes?.filter(a => a.type === group.type).map((attr) => (
-                            <div key={attr.id} className={`group flex items-center gap-3 p-4 rounded-2xl border transition-all ${attr.in_stock ? 'bg-[var(--input-bg)] border-[var(--border)]' : 'bg-red-500/5 border-red-500/10'}`}>
-                                {group.type === 'color' && attr.hex_code && <div className="w-5 h-5 rounded-full border border-black/20 shadow-inner" style={{ backgroundColor: attr.hex_code }} />}
-                                <span className={`text-[11px] font-black uppercase ${attr.in_stock ? 'text-[var(--text-primary)]' : 'text-red-400 line-through'}`}>{attr.value}</span>
-                                <div className="flex items-center gap-1.5 ml-2 border-l border-white/10 pl-2">
-                                    <button onClick={() => toggleStock(attr.id, attr.in_stock)} className="text-green-500 hover:text-green-400"><Check size={12} /></button>
-                                    <button onClick={() => setAttributeModal({ open: true, id: attr.id, styleId: activeStyleId, type: attr.type, value: attr.value, hex_code: attr.hex_code })} className="text-blue-500 hover:text-blue-400"><Edit2 size={12} /></button>
-                                    <button onClick={() => deleteItem('attribute', attr.id)} className="text-red-500 hover:text-red-400"><Trash2 size={12} /></button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleAttributeDragEnd(group.type)}>
+                      <SortableContext items={(currentStyle?.ProductAttributes?.filter(a => a.type === group.type) || []).map(a => a.id)} strategy={rectSortingStrategy}>
+                        <div className="flex flex-wrap gap-4">
+                            {currentStyle?.ProductAttributes?.filter(a => a.type === group.type).map((attr) => (
+                                <SortableAttributeChip
+                                    key={attr.id}
+                                    attr={attr}
+                                    groupType={group.type}
+                                    isMaster={isMaster}
+                                    onToggleStock={() => toggleStock(attr.id, attr.in_stock)}
+                                    onEdit={() => setAttributeModal({ open: true, id: attr.id, styleId: activeStyleId, type: attr.type, value: attr.value, hex_code: attr.hex_code })}
+                                    onDelete={() => deleteItem('attribute', attr.id)}
+                                />
+                            ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
                 </div>
             ))}
         </div>
